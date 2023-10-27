@@ -13,7 +13,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <mpich/mpi.h>
-#include <mpich/mpi_proto.h>
 
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
 

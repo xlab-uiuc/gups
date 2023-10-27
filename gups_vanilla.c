@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <mpich/mpi.h>
+#include <mpich/mpi_proto.h>
 
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
 
@@ -42,7 +43,9 @@ int main(int narg, char **arg)
 {
   int me,nprocs;
   int i,j,iterate,niterate;
-  int nlocal,nlocalm1,logtable,index,logtablelocal;
+  u64Int nlocal, base = 1;
+  int nlocalm1,logtable,index,logtablelocal;
+  // int nlocal,nlocalm1,logtable,index,logtablelocal;
   int logprocs,ipartner,ndata,nsend,nkeep,nrecv,maxndata,maxnfinal,nexcess;
   int nbad,chunk,chunkbig;
   double t0,t0_all,Gups;
@@ -87,7 +90,11 @@ int main(int narg, char **arg)
   logprocs = 0;
   while (1 << logprocs < nprocs) logprocs++;
 
-  nglobal = ((u64Int) 1) << logtable;
+  printf("logtable=%d nprocs=%d\n", logtable, nprocs);
+
+  // nglobal = ((u64Int) 1ULL) << logtable;
+  nglobal = base << logtable;
+  // nglobal = ((uint64_t) 1ULL) << logtable;
   nlocal = nglobal / nprocs;
   nlocalm1 = nlocal - 1;
   logtablelocal = logtable - logprocs;
@@ -98,6 +105,7 @@ int main(int narg, char **arg)
 
   chunkbig = 16*chunk;
 
+  printf("nlocal=0x%llx nglobal=0x%llx chunkbig=0x%x\n", nlocal, nglobal, chunkbig);
   table = (u64Int *) malloc(nlocal*sizeof(u64Int));
   data = (u64Int *) malloc(chunkbig*sizeof(u64Int));
   send = (u64Int *) malloc(chunkbig*sizeof(u64Int));

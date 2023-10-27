@@ -5,7 +5,7 @@ SHELL = /bin/sh
 # System-specific settings
 
 CC =		gcc
-CCFLAGS =	-O -g -DCHECK
+CCFLAGS =	-O -g -DCHECK -I /usr/include/x86_64-linux-gnu/mpich
 LINK =		gcc
 LINKFLAGS =	-O -g 
 LIB =		-lmpich
@@ -25,3 +25,6 @@ gups_opt:	gups_opt.o
 
 %.o:%.c
 	$(CC) $(CCFLAGS) -c $<
+
+clean:
+	rm -f *.o gups_vanilla gups_nonpow2 gups_opt

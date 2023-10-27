@@ -1,0 +1,4 @@
+*.o
+gups_vanilla
+gups_nonpow2
+gups_opt

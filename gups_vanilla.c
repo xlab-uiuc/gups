@@ -42,8 +42,8 @@ int main(int narg, char **arg)
 {
   int me,nprocs;
   int i,j,iterate,niterate;
-  u64Int nlocal, base = 1;
-  int nlocalm1,logtable,index,logtablelocal;
+  u64Int nlocal, base = 1, nlocalm1, index;
+  int logtable,logtablelocal;
   // int nlocal,nlocalm1,logtable,index,logtablelocal;
   int logprocs,ipartner,ndata,nsend,nkeep,nrecv,maxndata,maxnfinal,nexcess;
   int nbad,chunk,chunkbig;

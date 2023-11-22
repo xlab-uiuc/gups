@@ -13,6 +13,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <mpich/mpi.h>
+#include <fcntl.h>
+#include <string.h>
+#include <unistd.h>
+#include <assert.h>
 
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
 
@@ -38,6 +42,46 @@ typedef unsigned long long u64Int;
 
 u64Int HPCC_starts(s64Int n);
 
+static int get_fifo_fd(const char * fifo_name, int flags) {
+  int fd = open(fifo_name, flags);
+  if (fd == -1) {
+    perror("open");
+    exit(EXIT_FAILURE);
+  }
+  return fd;
+}
+
+static void enable_perf(int perf_ctl_fd, int perf_ack_fd)
+{
+  char ack[5];
+	if (perf_ctl_fd != -1) {
+		ssize_t bytes_written = write(perf_ctl_fd, "enable\n", 8);
+    assert(bytes_written == 8);
+	}
+  if (perf_ack_fd != -1) {
+    ssize_t bytes_read = read(perf_ack_fd, ack, 5);
+    assert(bytes_read == 5 && strcmp(ack, "ack\n") == 0);
+  }
+  
+}
+
+static void disable_perf(int perf_ctl_fd, int perf_ack_fd)
+{
+  char ack[5];
+	if (perf_ctl_fd != -1) {
+		ssize_t bytes_written = write(perf_ctl_fd, "disable\n", 9);
+    assert(bytes_written == 8);
+	}
+
+  if (perf_ack_fd != -1) {
+    ssize_t bytes_read = read(perf_ack_fd, ack, 5);
+    assert(bytes_read == 5 && strcmp(ack, "ack\n") == 0);
+  }
+}
+
+#define RUN_ARGC 4
+#define PERF_ARGC 6
+
 int main(int narg, char **arg)
 {
   int me,nprocs;
@@ -62,7 +106,7 @@ int main(int narg, char **arg)
      M = # of update sets per proc
      chunk = # of updates in one set */
 
-  if (narg != 4) {
+  if (narg != RUN_ARGC && narg != PERF_ARGC) {
     if (me == 0) printf("Syntax: gups N M chunk\n");
     MPI_Abort(MPI_COMM_WORLD,1);
   }
@@ -72,7 +116,16 @@ int main(int narg, char **arg)
   chunk = atoi(arg[3]);
 
   /* insure Nprocs is power of 2 */
+  int perf_ctl_fd = -1;
+  int perf_ack_fd = -1;
+  printf("narg = %d\n", narg);
+  if(narg == PERF_ARGC) {
+      perf_ctl_fd = get_fifo_fd(arg[PERF_ARGC - 2], O_WRONLY);
+      perf_ack_fd = get_fifo_fd(arg[PERF_ARGC - 1], O_RDONLY);
+	}
 
+  printf("perf_ctl_fd = %d, perf_ack_fd = %d\n", perf_ctl_fd, perf_ack_fd);
+  
   i = 1;
   while (i < nprocs) i *= 2;
   if (i != nprocs) {
@@ -136,6 +189,7 @@ int main(int narg, char **arg)
 
   MPI_Barrier(MPI_COMM_WORLD);
   t0 = -MPI_Wtime();
+  enable_perf(perf_ctl_fd, perf_ack_fd);
 
   for (iterate = 0; iterate < niterate; iterate++) {
     for (i = 0; i < chunk; i++) {
@@ -181,7 +235,7 @@ int main(int narg, char **arg)
       if ((data[i] & procmask) >> logtablelocal != me) nbad++;
 #endif
   }
-
+  disable_perf(perf_ctl_fd, perf_ack_fd);
   MPI_Barrier(MPI_COMM_WORLD);
   t0 += MPI_Wtime();
 

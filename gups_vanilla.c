@@ -17,6 +17,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <assert.h>
+#include <sys/syscall.h>
 
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
 
@@ -54,6 +55,9 @@ static int get_fifo_fd(const char * fifo_name, int flags) {
 static void enable_perf(int perf_ctl_fd, int perf_ack_fd)
 {
   char ack[5];
+  #define SYS_show_pgtable 600
+  long res = syscall(SYS_show_pgtable);
+  printf("System call returned %ld\n", res);
 	if (perf_ctl_fd != -1) {
 		ssize_t bytes_written = write(perf_ctl_fd, "enable\n", 8);
     assert(bytes_written == 8);

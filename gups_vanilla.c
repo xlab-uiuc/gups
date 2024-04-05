@@ -73,6 +73,9 @@ static void disable_perf(int perf_ctl_fd, int perf_ack_fd)
 {
   char ack[5];
   __asm__ volatile ("xchgq %r11, %r11");
+  #define SYS_show_pgtable 600
+  long res = syscall(SYS_show_pgtable);
+  printf("System call returned %ld\n", res);
 	if (perf_ctl_fd != -1) {
 		ssize_t bytes_written = write(perf_ctl_fd, "disable\n", 9);
     assert(bytes_written == 9);
@@ -86,6 +89,11 @@ static void disable_perf(int perf_ctl_fd, int perf_ack_fd)
 
 #define RUN_ARGC 4
 #define PERF_ARGC 6
+
+#define SIM_ARGC 5
+
+#define RECORD_RUNNING 1
+#define RECORD_LOADING 2
 
 int main(int narg, char **arg)
 {
@@ -111,7 +119,7 @@ int main(int narg, char **arg)
      M = # of update sets per proc
      chunk = # of updates in one set */
 
-  if (narg != RUN_ARGC && narg != PERF_ARGC) {
+  if (narg != RUN_ARGC && narg != PERF_ARGC && narg != SIM_ARGC) {
     if (me == 0) printf("Syntax: gups N M chunk\n");
     MPI_Abort(MPI_COMM_WORLD,1);
   }
@@ -128,9 +136,15 @@ int main(int narg, char **arg)
       perf_ctl_fd = get_fifo_fd(arg[PERF_ARGC - 2], O_WRONLY);
       perf_ack_fd = get_fifo_fd(arg[PERF_ARGC - 1], O_RDONLY);
 	}
+  /* 0 for nothing, 1 for running, 2 for loading. Default for running */
+  int loading_stage = 1;
+  if(narg == SIM_ARGC) {
+    loading_stage = atoi(arg[SIM_ARGC - 1]);
+  }
 
-  printf("perf_ctl_fd = %d, perf_ack_fd = %d\n", perf_ctl_fd, perf_ack_fd);
-  
+  printf("perf_ctl_fd = %d, perf_ack_fd = %d loading_stage=%d\n", perf_ctl_fd,
+         perf_ack_fd, loading_stage);
+
   i = 1;
   while (i < nprocs) i *= 2;
   if (i != nprocs) {
@@ -163,6 +177,10 @@ int main(int narg, char **arg)
   chunkbig = 16*chunk;
 
   printf("nlocal=0x%llx nglobal=0x%llx chunkbig=0x%x\n", nlocal, nglobal, chunkbig);
+  if (loading_stage & RECORD_LOADING) {
+    enable_perf(perf_ctl_fd, perf_ack_fd);
+  }
+
   table = (u64Int *) malloc(nlocal*sizeof(u64Int));
   data = (u64Int *) malloc(chunkbig*sizeof(u64Int));
   send = (u64Int *) malloc(chunkbig*sizeof(u64Int));
@@ -182,6 +200,10 @@ int main(int narg, char **arg)
   nupdates = (u64Int) nprocs * chunk * niterate;
   ran = HPCC_starts(nupdates/nprocs*me);
 
+  if (loading_stage & RECORD_LOADING) {
+    disable_perf(perf_ctl_fd, perf_ack_fd);
+  }
+
   /* loop:
        generate chunk random values per proc
        communicate datums to correct processor via hypercube routing
@@ -193,8 +215,12 @@ int main(int narg, char **arg)
   nbad = 0;
 
   MPI_Barrier(MPI_COMM_WORLD);
+  printf("Starting iterations\n");
   t0 = -MPI_Wtime();
-  enable_perf(perf_ctl_fd, perf_ack_fd);
+
+  if (loading_stage & RECORD_RUNNING) {
+    enable_perf(perf_ctl_fd, perf_ack_fd);
+  }
 
   for (iterate = 0; iterate < niterate; iterate++) {
     for (i = 0; i < chunk; i++) {
@@ -240,7 +266,10 @@ int main(int narg, char **arg)
       if ((data[i] & procmask) >> logtablelocal != me) nbad++;
 #endif
   }
-  disable_perf(perf_ctl_fd, perf_ack_fd);
+
+  if (loading_stage & RECORD_RUNNING) {
+    disable_perf(perf_ctl_fd, perf_ack_fd);
+  }
   MPI_Barrier(MPI_COMM_WORLD);
   t0 += MPI_Wtime();
 

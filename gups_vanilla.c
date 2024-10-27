@@ -44,6 +44,7 @@ typedef unsigned long long u64Int;
 u64Int HPCC_starts(s64Int n);
 
 static int get_fifo_fd(const char * fifo_name, int flags) {
+  printf("Opening FIFO %s\n", fifo_name);
   int fd = open(fifo_name, flags);
   if (fd == -1) {
     perror("open");
@@ -89,6 +90,7 @@ static void disable_perf(int perf_ctl_fd, int perf_ack_fd)
 
 #define RUN_ARGC 4
 #define PERF_ARGC 6
+#define PERF_SELECT_STAGE_ARGC 7
 
 #define SIM_ARGC 5
 
@@ -119,7 +121,7 @@ int main(int narg, char **arg)
      M = # of update sets per proc
      chunk = # of updates in one set */
 
-  if (narg != RUN_ARGC && narg != PERF_ARGC && narg != SIM_ARGC) {
+  if (narg != RUN_ARGC && narg != PERF_ARGC && narg != SIM_ARGC && narg != PERF_SELECT_STAGE_ARGC) {
     if (me == 0) printf("Syntax: gups N M chunk\n");
     MPI_Abort(MPI_COMM_WORLD,1);
   }
@@ -131,19 +133,26 @@ int main(int narg, char **arg)
   /* insure Nprocs is power of 2 */
   int perf_ctl_fd = -1;
   int perf_ack_fd = -1;
+
+  /* 0 for nothing, 1 for running, 2 for loading. Default for running */
+  int record_stage = 1;
   printf("narg = %d\n", narg);
   if(narg == PERF_ARGC) {
       perf_ctl_fd = get_fifo_fd(arg[PERF_ARGC - 2], O_WRONLY);
       perf_ack_fd = get_fifo_fd(arg[PERF_ARGC - 1], O_RDONLY);
-	}
-  /* 0 for nothing, 1 for running, 2 for loading. Default for running */
-  int loading_stage = 1;
-  if(narg == SIM_ARGC) {
-    loading_stage = atoi(arg[SIM_ARGC - 1]);
+	} else if (narg == PERF_SELECT_STAGE_ARGC) {
+    perf_ctl_fd = get_fifo_fd(arg[PERF_SELECT_STAGE_ARGC - 3], O_WRONLY);
+    perf_ack_fd = get_fifo_fd(arg[PERF_SELECT_STAGE_ARGC - 2], O_RDONLY);
+    record_stage = atoi(arg[PERF_SELECT_STAGE_ARGC - 1]);
   }
 
-  printf("perf_ctl_fd = %d, perf_ack_fd = %d loading_stage=%d\n", perf_ctl_fd,
-         perf_ack_fd, loading_stage);
+  
+  if(narg == SIM_ARGC) {
+    record_stage = atoi(arg[SIM_ARGC - 1]);
+  }
+
+  printf("perf_ctl_fd = %d, perf_ack_fd = %d record_stage=%d\n", perf_ctl_fd,
+         perf_ack_fd, record_stage);
 
   i = 1;
   while (i < nprocs) i *= 2;
@@ -177,7 +186,7 @@ int main(int narg, char **arg)
   chunkbig = 16*chunk;
 
   printf("nlocal=0x%llx nglobal=0x%llx chunkbig=0x%x\n", nlocal, nglobal, chunkbig);
-  if (loading_stage & RECORD_LOADING) {
+  if (record_stage & RECORD_LOADING) {
     enable_perf(perf_ctl_fd, perf_ack_fd);
   }
 
@@ -200,7 +209,7 @@ int main(int narg, char **arg)
   nupdates = (u64Int) nprocs * chunk * niterate;
   ran = HPCC_starts(nupdates/nprocs*me);
 
-  if (loading_stage & RECORD_LOADING) {
+  if (record_stage & RECORD_LOADING) {
     disable_perf(perf_ctl_fd, perf_ack_fd);
   }
 
@@ -218,7 +227,7 @@ int main(int narg, char **arg)
   printf("Starting iterations\n");
   t0 = -MPI_Wtime();
 
-  if (loading_stage & RECORD_RUNNING) {
+  if (record_stage & RECORD_RUNNING) {
     enable_perf(perf_ctl_fd, perf_ack_fd);
   }
 
@@ -267,7 +276,7 @@ int main(int narg, char **arg)
 #endif
   }
 
-  if (loading_stage & RECORD_RUNNING) {
+  if (record_stage & RECORD_RUNNING) {
     disable_perf(perf_ctl_fd, perf_ack_fd);
   }
   MPI_Barrier(MPI_COMM_WORLD);

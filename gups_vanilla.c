@@ -204,10 +204,16 @@ int main(int narg, char **arg)
   /* initialize my portion of global array
      global array starts with table[i] = i */
 
-  for (i = 0; i < nlocal; i++) {
-    if((19 * (nlocal/20)) == i && record_stage == RECORD_LOADING_END) {
-      enable_perf(perf_ctl_fd, perf_ack_fd); 
-    }
+  for (i = 0; i < (19 * (nlocal/20)); i++) {
+    table[i] = i + offset;
+  }
+  /* this is placed here to only have to call the if statement once, 
+     this is instead of putting it in the for loop where it will potentially
+     take up a lot of instructions and hurt performance */
+  if(record_stage == RECORD_LOADING_END) {
+    enable_perf(perf_ctl_fd, perf_ack_fd); 
+  }
+  for (; i < nlocal; i++) {
     table[i] = i + offset;
   }
 

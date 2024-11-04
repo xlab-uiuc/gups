@@ -96,11 +96,13 @@ static void disable_perf(int perf_ctl_fd, int perf_ack_fd)
 
 #define RECORD_RUNNING 1
 #define RECORD_LOADING 2
+#define RECORD_LOADING_END 3
 
 int main(int narg, char **arg)
 {
   int me,nprocs;
-  int i,j,iterate,niterate;
+  int j,iterate,niterate;
+  long long unsigned int i; 
   u64Int nlocal, base = 1, nlocalm1, index;
   int logtable,logtablelocal;
   // int nlocal,nlocalm1,logtable,index,logtablelocal;
@@ -134,7 +136,7 @@ int main(int narg, char **arg)
   int perf_ctl_fd = -1;
   int perf_ack_fd = -1;
 
-  /* 0 for nothing, 1 for running, 2 for loading. Default for running */
+  /* 0 for nothing, 1 for running, 2 for loading, 3 for loading end phase. Default for running */
   int record_stage = 1;
   printf("narg = %d\n", narg);
   if(narg == PERF_ARGC) {
@@ -186,7 +188,7 @@ int main(int narg, char **arg)
   chunkbig = 16*chunk;
 
   printf("nlocal=0x%llx nglobal=0x%llx chunkbig=0x%x\n", nlocal, nglobal, chunkbig);
-  if (record_stage & RECORD_LOADING) {
+  if (record_stage == RECORD_LOADING) {
     enable_perf(perf_ctl_fd, perf_ack_fd);
   }
 
@@ -202,14 +204,19 @@ int main(int narg, char **arg)
   /* initialize my portion of global array
      global array starts with table[i] = i */
 
-  for (i = 0; i < nlocal; i++) table[i] = i + offset;
+  for (i = 0; i < nlocal; i++) {
+    if((19 * (nlocal/20)) == i && record_stage == RECORD_LOADING_END) {
+      enable_perf(perf_ctl_fd, perf_ack_fd); 
+    }
+    table[i] = i + offset;
+  }
 
   /* start my random # partway thru global stream */
 
   nupdates = (u64Int) nprocs * chunk * niterate;
   ran = HPCC_starts(nupdates/nprocs*me);
 
-  if (record_stage & RECORD_LOADING) {
+  if (record_stage == RECORD_LOADING || record_stage == RECORD_LOADING_END) {
     disable_perf(perf_ctl_fd, perf_ack_fd);
   }
 
@@ -227,7 +234,7 @@ int main(int narg, char **arg)
   printf("Starting iterations\n");
   t0 = -MPI_Wtime();
 
-  if (record_stage & RECORD_RUNNING) {
+  if (record_stage == RECORD_RUNNING) {
     enable_perf(perf_ctl_fd, perf_ack_fd);
   }
 
@@ -276,7 +283,7 @@ int main(int narg, char **arg)
 #endif
   }
 
-  if (record_stage & RECORD_RUNNING) {
+  if (record_stage == RECORD_RUNNING) {
     disable_perf(perf_ctl_fd, perf_ack_fd);
   }
   MPI_Barrier(MPI_COMM_WORLD);
